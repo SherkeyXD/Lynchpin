@@ -6,6 +6,7 @@
 	let hasInitialProgressRendered = false;
 	let accessPulseEnabled = true;
 	let accessEntered = false;
+	let audioRuntime = null;
 
 	function parseBoolean(value, fallback) {
 		if (value == null) return fallback;
@@ -57,7 +58,7 @@
 
 		if (!hasInitialProgressRendered) {
 			diamond.style.display = 'none';
-			diamond.classList.remove('entered');
+			diamond.classList.remove('enter', 'entered');
 			diamond.removeAttribute('data-entered');
 			accessEntered = false;
 			stopPulse();
@@ -66,13 +67,23 @@
 
 		if (!accessEntered) {
 			diamond.style.display = 'block';
-			diamond.classList.add('entered');
-			accessEntered = true;
-			startPulse();
+			diamond.classList.remove('entered', 'enter');
+			// Force reflow so repeated enter animations can restart reliably.
+			void diamond.offsetWidth;
+			diamond.classList.add('enter');
+			const onEnterEnd = () => {
+				diamond.removeEventListener('animationend', onEnterEnd);
+				diamond.classList.remove('enter');
+				diamond.classList.add('entered');
+				accessEntered = true;
+				startPulse();
+			};
+			diamond.addEventListener('animationend', onEnterEnd, { once: true });
 			return;
 		}
 
 		diamond.style.display = 'block';
+		diamond.classList.remove('enter');
 		diamond.classList.add('entered');
 		startPulse();
 	}
@@ -80,74 +91,91 @@
 	function applyAudioSettings(shouldPlay, volumePercent) {
 		const audio = document.querySelector('audio');
 		if (!audio) return;
-		audio.volume = volumePercent / 100;
+
+		if (audioRuntime) {
+			const prev = audioRuntime;
+			audio.removeEventListener('canplay', prev.onCanPlay);
+			window.removeEventListener('focus', prev.onFocus);
+			document.removeEventListener('visibilitychange', prev.onVisibilityChange);
+			window.removeEventListener('pointerdown', prev.onGestureUnlock);
+			window.removeEventListener('keydown', prev.onGestureUnlock);
+			window.removeEventListener('touchstart', prev.onGestureUnlock);
+			audioRuntime = null;
+		}
+
+		const targetVolume = volumePercent / 100;
+		audio.volume = targetVolume;
+		audio.preload = 'auto';
+		audio.playsInline = true;
+		audio.autoplay = false;
+		audio.loop = true;
+		audio.defaultMuted = false;
+		audio.removeAttribute('muted');
+		audio.muted = false;
+
 		if (!shouldPlay) {
 			audio.pause();
 			return;
 		}
-		audio.autoplay = true;
-		audio.preload = 'auto';
-		audio.playsInline = true;
 
-		let retryTimer = null;
-
-		const removeUnlockListeners = () => {
-			window.removeEventListener('pointerdown', unlockAudio);
-			window.removeEventListener('keydown', unlockAudio);
-			window.removeEventListener('touchstart', unlockAudio);
+		const runtime = {
+			unlocked: false,
+			onCanPlay: null,
+			onFocus: null,
+			onVisibilityChange: null,
+			onGestureUnlock: null,
 		};
 
-		const cleanupAutoTry = () => {
-			if (retryTimer) {
-				clearInterval(retryTimer);
-				retryTimer = null;
-			}
-			audio.removeEventListener('canplay', attemptAutoplay);
-			window.removeEventListener('focus', attemptAutoplay);
-			document.removeEventListener('visibilitychange', onVisibilityChange);
-		};
-
-		const onPlaybackStarted = () => {
+		const forceAudibleState = () => {
+			audio.defaultMuted = false;
+			audio.removeAttribute('muted');
 			audio.muted = false;
-			cleanupAutoTry();
-			removeUnlockListeners();
+			audio.volume = targetVolume;
 		};
 
-		const attemptAutoplay = () => {
-			audio.muted = true;
-			audio.play().then(onPlaybackStarted).catch(() => {});
+		const tryAudiblePlayback = () => {
+			forceAudibleState();
+			return audio.play().then(() => {
+				runtime.unlocked = true;
+				window.removeEventListener('pointerdown', runtime.onGestureUnlock);
+				window.removeEventListener('keydown', runtime.onGestureUnlock);
+				window.removeEventListener('touchstart', runtime.onGestureUnlock);
+			}).catch(() => {
+				runtime.unlocked = false;
+			});
 		};
 
-		const onVisibilityChange = () => {
+		const ensurePlayback = () => {
+			if (document.visibilityState === 'hidden' || !runtime.unlocked) return;
+			if (audio.paused) {
+				tryAudiblePlayback();
+			} else {
+				forceAudibleState();
+			}
+		};
+
+		runtime.onCanPlay = () => {
+			ensurePlayback();
+		};
+		runtime.onFocus = () => {
+			ensurePlayback();
+		};
+		runtime.onVisibilityChange = () => {
 			if (document.visibilityState === 'visible') {
-				attemptAutoplay();
+				ensurePlayback();
 			}
 		};
-
-		// Browsers may still block sound autoplay. Gesture unlock is a final fallback.
-		const unlockAudio = () => {
-			audio.muted = false;
-			audio.play().then(() => {
-				cleanupAutoTry();
-				removeUnlockListeners();
-			}).catch(() => {});
+		runtime.onGestureUnlock = () => {
+			tryAudiblePlayback();
 		};
 
-		audio.addEventListener('canplay', attemptAutoplay);
-		window.addEventListener('focus', attemptAutoplay);
-		document.addEventListener('visibilitychange', onVisibilityChange);
-		window.addEventListener('pointerdown', unlockAudio, { once: true });
-		window.addEventListener('keydown', unlockAudio, { once: true });
-		window.addEventListener('touchstart', unlockAudio, { once: true });
-
-		attemptAutoplay();
-		retryTimer = setInterval(() => {
-			if (!audio.paused) {
-				onPlaybackStarted();
-				return;
-			}
-			attemptAutoplay();
-		}, 1000);
+		audioRuntime = runtime;
+		audio.addEventListener('canplay', runtime.onCanPlay);
+		window.addEventListener('focus', runtime.onFocus);
+		document.addEventListener('visibilitychange', runtime.onVisibilityChange);
+		window.addEventListener('pointerdown', runtime.onGestureUnlock);
+		window.addEventListener('keydown', runtime.onGestureUnlock);
+		window.addEventListener('touchstart', runtime.onGestureUnlock);
 	}
 
 	function applyProgressSettings(autoProgress, manualProgress) {

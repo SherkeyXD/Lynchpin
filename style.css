@@ -325,20 +325,34 @@ h2 {
 	position: absolute;
 	left: 50%;
 	top: 50%;
-	transform: translate(-50%, -50%) rotate(45deg) scale(1);
+	transform: translate(-50%, -50%) rotate(45deg) scale(1.05);
 	width: 4.75cqw;
 	height: 4.75cqw;
-	border: 0.75cqw solid rgba(0, 0, 0, 0.75);
+	border: 0.75cqw solid black;
 	box-sizing: border-box;
 	background: transparent;
 	opacity: 0;
 	display: none;
-	z-index: 3;
+}
+
+@keyframes access-enter {
+	from {
+		transform: translate(-50%, -50%) rotate(45deg) scale(1.05);
+		opacity: 0;
+	}
+	to {
+		transform: translate(-50%, -50%) rotate(45deg) scale(1);
+		opacity: 0.75;
+	}
+}
+
+.access-diamond.enter {
+	animation: access-enter 500ms ease forwards;
 }
 
 .access-diamond.entered {
 	transform: translate(-50%, -50%) rotate(45deg) scale(1);
-	opacity: 1;
+	opacity: 0.75;
 }
 
 .access-label {
@@ -359,27 +373,38 @@ h2 {
 	transform: translate(-50%, -50%) rotate(45deg);
 	width: 4.75cqw;
 	height: 4.75cqw;
-	border: 0.25cqw solid black;
 	box-sizing: border-box;
 	background: transparent;
-	opacity: 0;
 	display: none;
-	z-index: 2;
-	pointer-events: none;
+}
+
+.access-animation::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border: 0.25cqw solid black;
+	box-sizing: border-box;
+	opacity: 0;
+	transform: scale(1);
+	transform-origin: 50% 50%;
+	filter: blur(0.03cqw);
 }
 
 @keyframes access-pulse {
 	0% {
-		transform: translate(-50%, -50%) rotate(45deg) scale(1);
-		opacity: 0.3;
+		transform: scale(1);
+		opacity: 0.12;
+	}
+	35% {
+		opacity: 0.35;
 	}
 	100% {
-		transform: translate(-50%, -50%) rotate(45deg) scale(1.32);
+		transform: scale(1.35);
 		opacity: 0;
 	}
 }
 
-.access-animation.animate {
+.access-animation.animate::before {
 	animation: access-pulse 2200ms cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
 }
 

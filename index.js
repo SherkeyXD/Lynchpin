@@ -213,22 +213,38 @@
 		circle.style.strokeDashoffset = String(-circumference);
 
 		requestAnimationFrame(() => {
-			const onCircleEnd = () => {
-				circle.removeEventListener('animationend', onCircleEnd);
-				const mask = document.querySelector('.process-bar-mask');
-				if (!mask) {
+			const startInitialProgressAnimation = () => {
+				const display = document.querySelector('.process-value');
+				if (!display) {
 					startProcessBarAnimation(() => {
 						hasInitialProgressRendered = true;
 						applyAccessPulse(accessPulseEnabled);
 					});
 					return;
 				}
-				const onMaskEnd = () => {
-					mask.removeEventListener('animationend', onMaskEnd);
+
+				const onDisplayEnd = () => {
+					display.removeEventListener('animationend', onDisplayEnd);
+					display.classList.remove('fade-in');
 					startProcessBarAnimation(() => {
 						hasInitialProgressRendered = true;
 						applyAccessPulse(accessPulseEnabled);
 					});
+				};
+				display.addEventListener('animationend', onDisplayEnd, { once: true });
+				display.classList.add('fade-in');
+			};
+
+			const onCircleEnd = () => {
+				circle.removeEventListener('animationend', onCircleEnd);
+				const mask = document.querySelector('.process-bar-mask');
+				if (!mask) {
+					startInitialProgressAnimation();
+					return;
+				}
+				const onMaskEnd = () => {
+					mask.removeEventListener('animationend', onMaskEnd);
+					startInitialProgressAnimation();
 				};
 				mask.addEventListener('animationend', onMaskEnd);
 				mask.classList.add('fade');
